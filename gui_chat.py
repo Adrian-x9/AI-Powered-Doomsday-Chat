@@ -9,7 +9,6 @@ warnings.filterwarnings("ignore")
 
 CHROMA_DB_DIR = "../n8n Workflow Architect/chroma_db"
 
-
 class DoomsdayChatApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -31,7 +30,7 @@ class DoomsdayChatApp(ctk.CTk):
 
         # Layout - Konfiguracja siatki
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)  # Główny wiersz z czatem ma rosnąć
+        self.grid_rowconfigure(1, weight=1)
 
         # --- PANEL USTAWIEŃ (Góra) ---
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -41,7 +40,6 @@ class DoomsdayChatApp(ctk.CTk):
                                        font=(self.font_family, 12))
         self.font_label.pack(side="left", padx=10)
 
-        # Suwak zmiany rozmiaru (od 10 do 32)
         self.font_slider = ctk.CTkSlider(self.settings_frame, from_=10, to=32, number_of_steps=22,
                                          command=self.update_font_size)
         self.font_slider.set(self.current_font_size)
@@ -56,7 +54,9 @@ class DoomsdayChatApp(ctk.CTk):
         self.input_frame = ctk.CTkFrame(self)
         self.input_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
 
-        self.user_input = ctk.CTkEntry(self.input_frame, placeholder_text="Zadaj pytanie Adzie...", height=40)
+        # Inicjalizujemy user_input z aktualną czcionką
+        self.user_input = ctk.CTkEntry(self.input_frame, placeholder_text="Zadaj pytanie Adzie...",
+                                       height=40, font=(self.font_family, self.current_font_size))
         self.user_input.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=10)
         self.user_input.bind("<Return>", lambda e: self.send_message())
 
@@ -66,10 +66,11 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat("ADA: System gotowy. Status: OFFLINE. W czym mogę pomóc?")
 
     def update_font_size(self, value):
-        """Aktualizuje rozmiar czcionki w czasie rzeczywistym podczas przesuwania suwaka."""
+        """Aktualizuje rozmiar czcionki w obu polach w czasie rzeczywistym."""
         self.current_font_size = int(value)
         self.font_label.configure(text=f"Rozmiar tekstu: {self.current_font_size}px")
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
+        self.user_input.configure(font=(self.font_family, self.current_font_size))
 
     def append_chat(self, text):
         self.chat_display.configure(state="normal")
@@ -101,7 +102,6 @@ class DoomsdayChatApp(ctk.CTk):
             self.append_chat(f"ADA: {response}")
         except Exception as e:
             self.append_chat(f"SYSTEM BŁĄD: {str(e)}")
-
 
 if __name__ == "__main__":
     app = DoomsdayChatApp()
