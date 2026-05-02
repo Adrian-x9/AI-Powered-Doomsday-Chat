@@ -2,3 +2,6 @@
 __pycache__/
 .idea/
 chroma_db/
+*.json
+*.log
+.env
