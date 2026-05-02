@@ -27,6 +27,9 @@ class DoomsdayChatApp(ctk.CTk):
         self.current_font_size = 14
         self.current_model = "llama3"
 
+        # Pamięć krótkotrwała Ady (Historia czatu)
+        self.chat_history = []
+
         # Inicjalizacja silnika AI
         print("🔋 System init...")
         self.embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
@@ -41,7 +44,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.settings_frame.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="ew")
 
-        # 1. Suwak fontu (Ikona Aa)
+        # 1. Suwak fontu
         self.font_label = ctk.CTkLabel(self.settings_frame, text=f"Aa: {self.current_font_size}",
                                        font=(self.font_family, self.current_font_size, "bold"))
         self.font_label.pack(side="left", padx=(0, 5))
@@ -51,7 +54,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.font_slider.set(self.current_font_size)
         self.font_slider.pack(side="left", padx=5)
 
-        # 2. Wybór modelu (Ikona Mózgu)
+        # 2. Wybór modelu
         self.model_label = ctk.CTkLabel(self.settings_frame, text="🧠",
                                         font=(self.font_family, self.current_font_size + 4))
         self.model_label.pack(side="left", padx=(15, 5))
@@ -62,12 +65,12 @@ class DoomsdayChatApp(ctk.CTk):
         self.model_option.set(self.current_model)
         self.model_option.pack(side="left", padx=5)
 
-        # 3. Przycisk Zapisz Log (Ikona Dyskietki)
+        # 3. Przycisk Zapisz Log
         self.save_button = ctk.CTkButton(self.settings_frame, text="💾", command=self.save_chat, width=40,
                                          font=(self.font_family, self.current_font_size + 2))
         self.save_button.pack(side="right", padx=(10, 0))
 
-        # 4. CHECKBOX: Baza wiedzy (Ikona Folderu + RAG)
+        # 4. CHECKBOX: Baza wiedzy
         self.use_rag_var = ctk.BooleanVar(value=True)
         self.rag_checkbox = ctk.CTkCheckBox(self.settings_frame, text="🗂️ RAG",
                                             variable=self.use_rag_var,
@@ -89,7 +92,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.user_input.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=10)
         self.user_input.bind("<Return>", lambda e: self.send_message())
 
-        # Przycisk wysyłania to symbol strzałki
+        # Przycisk wysyłania
         self.send_button = ctk.CTkButton(self.input_frame, text="➤", command=self.send_message, width=60,
                                          font=(self.font_family, self.current_font_size + 4))
         self.send_button.pack(side="right", padx=10, pady=10)
@@ -97,20 +100,13 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat("🤖 [SYSTEM]: OFFLINE MODE ACTIVE. READY.")
 
     def update_font_size(self, value):
-        """Aktualizuje rozmiar WSZYSTKICH elementów interfejsu proporcjonalnie."""
         self.current_font_size = int(value)
-
-        # Etykieta suwaka
         self.font_label.configure(text=f"Aa: {self.current_font_size}",
                                   font=(self.font_family, self.current_font_size, "bold"))
-
-        # Górny panel
         self.model_label.configure(font=(self.font_family, self.current_font_size + 4))
         self.model_option.configure(font=(self.font_family, self.current_font_size))
         self.save_button.configure(font=(self.font_family, self.current_font_size + 2))
         self.rag_checkbox.configure(font=(self.font_family, self.current_font_size, "bold"))
-
-        # Główne okna i dolny panel
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
         self.user_input.configure(font=(self.font_family, self.current_font_size))
         self.send_button.configure(font=(self.font_family, self.current_font_size + 4))
@@ -119,19 +115,21 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat(f"⚙️ [SYSTEM]: Loading model -> {new_model}...")
         self.current_model = new_model
         self.llm = Ollama(model=self.current_model)
-        self.append_chat(f"⚙️ [SYSTEM]: Model {new_model} ready.")
+
+        # Opcjonalnie: czyścimy pamięć przy zmianie "mózgu" (nowy model = czysta karta)
+        self.chat_history = []
+
+        self.append_chat(f"⚙️ [SYSTEM]: Model {new_model} ready. Memory cleared.")
 
     def save_chat(self):
         chat_content = self.chat_display.get("1.0", "end-1c")
         default_filename = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-
         filepath = filedialog.asksaveasfilename(
             defaultextension=".txt",
             initialfile=default_filename,
             title="Save Log",
             filetypes=(("Text Files", "*.txt"), ("All Files", "*.*"))
         )
-
         if filepath:
             try:
                 with open(filepath, "w", encoding="utf-8") as file:
@@ -153,36 +151,53 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat(f"👤: {query}")
         self.user_input.delete(0, "end")
 
+        # 1. Budowanie czytelnego tekstu historii
+        history_str = ""
+        if self.chat_history:
+            history_str = "--- CHAT HISTORY ---\n" + "\n".join(self.chat_history) + "\n--------------------\n"
+
         if self.use_rag_var.get():
             docs = self.db.similarity_search(query, k=2)
             context = "\n---\n".join([d.page_content for d in docs])
 
-            # Żelazny prompt RAG
             prompt = f"""You are Ada, a helpful AI survival assistant. 
-CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the QUESTION. If the user writes in Polish, you MUST answer in Polish. If German, in German.
+CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the CURRENT MESSAGE.
 
 The CONTEXT below contains the user's private data, workflows, and personal information. Treat this as facts about the user.
 
+{history_str}
 CONTEXT:
 {context}
 
-QUESTION: {query}"""
+CURRENT MESSAGE: {query}
+ADA'S RESPONSE:"""
 
         else:
-            # Żelazny prompt ogólny
             prompt = f"""You are Ada, a helpful AI survival assistant. 
-CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the QUESTION. If the user writes in Polish, you MUST answer in Polish.
+CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the CURRENT MESSAGE.
 
-Answer the question using your general knowledge.
+Answer the question using your general knowledge and the conversation history below.
 
-QUESTION: {query}"""
+{history_str}
+CURRENT MESSAGE: {query}
+ADA'S RESPONSE:"""
 
         try:
             response = self.llm.invoke(prompt)
+            # Strip usuwa ewentualne puste spacje na początku odpowiedzi
+            response = response.strip()
             self.append_chat(f"🤖 [{self.current_model}]: {response}")
+
+            # 2. Zapisujemy z wyraźnym podziałem na role
+            self.chat_history.append(f"USER: {query}")
+            self.chat_history.append(f"ADA: {response}")
+
+            # 3. Utrzymujemy 6 wpisów (3 zapytania i 3 odpowiedzi)
+            if len(self.chat_history) > 6:
+                self.chat_history = self.chat_history[-6:]
+
         except Exception as e:
             self.append_chat(f"❌ [SYSTEM ERROR]: {str(e)}")
-
 
 if __name__ == "__main__":
     app = DoomsdayChatApp()
