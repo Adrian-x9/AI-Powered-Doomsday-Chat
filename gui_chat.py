@@ -7,7 +7,9 @@ from langchain_community.vectorstores import Chroma
 
 warnings.filterwarnings("ignore")
 
+# Konfiguracja ścieżek
 CHROMA_DB_DIR = "../n8n Workflow Architect/chroma_db"
+
 
 class DoomsdayChatApp(ctk.CTk):
     def __init__(self):
@@ -18,7 +20,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.geometry("800x700")
         ctk.set_appearance_mode("dark")
 
-        # Stan początkowy
+        # Stan początkowy fontów
         self.font_family = "Segoe UI"
         self.current_font_size = 14
 
@@ -54,7 +56,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.input_frame = ctk.CTkFrame(self)
         self.input_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
 
-        # Inicjalizujemy user_input z aktualną czcionką
+        # Inicjalizacja user_input z uwzględnieniem fontu
         self.user_input = ctk.CTkEntry(self.input_frame, placeholder_text="Zadaj pytanie Adzie...",
                                        height=40, font=(self.font_family, self.current_font_size))
         self.user_input.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=10)
@@ -66,10 +68,13 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat("ADA: System gotowy. Status: OFFLINE. W czym mogę pomóc?")
 
     def update_font_size(self, value):
-        """Aktualizuje rozmiar czcionki w obu polach w czasie rzeczywistym."""
+        """Aktualizuje rozmiar czcionki w obu polach jednocześnie."""
         self.current_font_size = int(value)
         self.font_label.configure(text=f"Rozmiar tekstu: {self.current_font_size}px")
+
+        # Aktualizacja czatu
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
+        # AKTUALIZACJA POLA WPISYWANIA
         self.user_input.configure(font=(self.font_family, self.current_font_size))
 
     def append_chat(self, text):
@@ -102,6 +107,7 @@ class DoomsdayChatApp(ctk.CTk):
             self.append_chat(f"ADA: {response}")
         except Exception as e:
             self.append_chat(f"SYSTEM BŁĄD: {str(e)}")
+
 
 if __name__ == "__main__":
     app = DoomsdayChatApp()
