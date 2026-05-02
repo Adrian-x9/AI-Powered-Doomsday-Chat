@@ -38,6 +38,7 @@ class DoomsdayChatApp(ctk.CTk):
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.settings_frame.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="ew")
 
+        # Suwak fontu
         self.font_label = ctk.CTkLabel(self.settings_frame, text=f"Rozmiar tekstu: {self.current_font_size}px",
                                        font=(self.font_family, 12))
         self.font_label.pack(side="left", padx=10)
@@ -46,6 +47,12 @@ class DoomsdayChatApp(ctk.CTk):
                                          command=self.update_font_size)
         self.font_slider.set(self.current_font_size)
         self.font_slider.pack(side="left", fill="x", expand=True, padx=10)
+
+        # CHECKBOX: Baza wiedzy (RAG)
+        self.use_rag_var = ctk.BooleanVar(value=True)
+        self.rag_checkbox = ctk.CTkCheckBox(self.settings_frame, text="Użyj prywatnej bazy wiedzy",
+                                            variable=self.use_rag_var, font=(self.font_family, 12))
+        self.rag_checkbox.pack(side="right", padx=10)
 
         # --- OKNO CZATU ---
         self.chat_display = ctk.CTkTextbox(self, state="disabled", wrap="word",
@@ -74,7 +81,7 @@ class DoomsdayChatApp(ctk.CTk):
 
         # Aktualizacja czatu
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
-        # AKTUALIZACJA POLA WPISYWANIA
+        # Aktualizacja pola wpisywania
         self.user_input.configure(font=(self.font_family, self.current_font_size))
 
     def append_chat(self, text):
@@ -90,17 +97,26 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat(f"TY: {query}")
         self.user_input.delete(0, "end")
 
-        docs = self.db.similarity_search(query, k=2)
-        context = "\n---\n".join([d.page_content for d in docs])
+        # Logika wyboru: czy używamy RAG, czy tylko wiedzy modelu
+        if self.use_rag_var.get():
+            # Tryb RAG: Szuka w bazie wiedzy (ChromaDB)
+            docs = self.db.similarity_search(query, k=2)
+            context = "\n---\n".join([d.page_content for d in docs])
+            prompt = f"""Jesteś Ada, asystentka przetrwania. 
+            ODPOWIADAJ W JĘZYKU, W KTÓRYM ZADANO PYTANIE.
+            Użyj KONTEKSTU poniżej, by odpowiedzieć. Jeśli tam nie ma info, użyj swojej wiedzy.
 
-        prompt = f"""Jesteś Ada, asystentka przetrwania. 
-        ODPOWIADAJ ZAWSZE W JĘZYKU POLSKIM.
-        Użyj KONTEKSTU poniżej, by odpowiedzieć. Jeśli tam nie ma info, użyj swojej wiedzy.
+            KONTEKST:
+            {context}
 
-        KONTEKST:
-        {context}
+            PYTANIE: {query}"""
+        else:
+            # Tryb Ogólny: Polega tylko na wbudowanej wiedzy modelu Llama 3
+            prompt = f"""Jesteś Ada, asystentka przetrwania. 
+            ODPOWIADAJ W JĘZYKU, W KTÓRYM ZADANO PYTANIE.
+            Odpowiedz na pytanie używając wyłącznie swojej wiedzy ogólnej.
 
-        PYTANIE: {query}"""
+            PYTANIE: {query}"""
 
         try:
             response = self.llm.invoke(prompt)
