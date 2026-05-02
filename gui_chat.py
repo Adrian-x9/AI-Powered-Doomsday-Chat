@@ -156,43 +156,45 @@ class DoomsdayChatApp(ctk.CTk):
         if self.chat_history:
             history_str = "--- CHAT HISTORY ---\n" + "\n".join(self.chat_history) + "\n--------------------\n"
 
+        # 2. Żelazne zasady (System Prompt) - tu leczymy "papugę"
+        system_rules = """System: You are Ada, a helpful AI survival assistant.
+CRITICAL RULES:
+1. ALWAYS respond in the SAME LANGUAGE the user used in their CURRENT MESSAGE.
+2. DO NOT echo or just translate the user's prompt. You must formulate a proper, meaningful reply.
+3. If the user asks you to repeat, translate, or say "the same thing" in another language, look at the CHAT HISTORY and translate YOUR OWN previous answer, NOT the user's question."""
+
+        # 3. Złożenie promptu zależnie od RAG
         if self.use_rag_var.get():
             docs = self.db.similarity_search(query, k=2)
             context = "\n---\n".join([d.page_content for d in docs])
 
-            prompt = f"""You are Ada, a helpful AI survival assistant. 
-CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the CURRENT MESSAGE.
+            prompt = f"""{system_rules}
 
-The CONTEXT below contains the user's private data, workflows, and personal information. Treat this as facts about the user.
-
-{history_str}
-CONTEXT:
+User's Data Context:
 {context}
 
-CURRENT MESSAGE: {query}
-ADA'S RESPONSE:"""
+{history_str}
+User: {query}
+Ada:"""
 
         else:
-            prompt = f"""You are Ada, a helpful AI survival assistant. 
-CRITICAL RULE: You MUST answer in the EXACT SAME LANGUAGE that the user used in the CURRENT MESSAGE.
-
-Answer the question using your general knowledge and the conversation history below.
+            prompt = f"""{system_rules}
 
 {history_str}
-CURRENT MESSAGE: {query}
-ADA'S RESPONSE:"""
+User: {query}
+Ada:"""
 
         try:
             response = self.llm.invoke(prompt)
-            # Strip usuwa ewentualne puste spacje na początku odpowiedzi
+            # Usuwa ewentualne puste znaki na starcie
             response = response.strip()
             self.append_chat(f"🤖 [{self.current_model}]: {response}")
 
-            # 2. Zapisujemy z wyraźnym podziałem na role
-            self.chat_history.append(f"USER: {query}")
-            self.chat_history.append(f"ADA: {response}")
+            # 4. Zapisujemy do historii, używając "User" i "Ada", żeby pasowało do formatu w prompcie
+            self.chat_history.append(f"User: {query}")
+            self.chat_history.append(f"Ada: {response}")
 
-            # 3. Utrzymujemy 6 wpisów (3 zapytania i 3 odpowiedzi)
+            # 5. Utrzymujemy limit pamięci
             if len(self.chat_history) > 6:
                 self.chat_history = self.chat_history[-6:]
 
