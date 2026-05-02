@@ -1,0 +1,5 @@
+customtkinter>=5.2.2
+langchain-community>=0.0.38
+langchain-huggingface>=0.0.1
+chromadb>=0.4.24
+sentence-transformers>=2.7.0
