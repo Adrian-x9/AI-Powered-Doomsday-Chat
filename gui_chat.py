@@ -155,50 +155,59 @@ class DoomsdayChatApp(ctk.CTk):
         # 1. Budowanie czytelnego tekstu historii
         history_str = ""
         if self.chat_history:
-            history_str = "--- CHAT HISTORY ---\n" + "\n".join(self.chat_history) + "\n--------------------\n"
+            history_str = "\n".join(self.chat_history)
 
-        # 2. Żelazne zasady z odpowiednim "kagańcem"
-        system_rules = """System: You are Ada, a helpful AI survival assistant.
-CRITICAL RULES:
-1. DETECT THE LANGUAGE OF THE 'CURRENT MESSAGE'. YOU MUST RESPOND IN THAT EXACT LANGUAGE. IF THE USER WRITES IN POLISH, YOU MUST REPLY IN POLISH.
-2. DO NOT echo or just translate the user's prompt. You must formulate a proper, meaningful reply.
-3. If the user asks you to repeat, translate, or say "the same thing" in another language, look at the CHAT HISTORY and translate YOUR OWN previous answer, NOT the user's question."""
+# 2. Uniwersalny System Prompt - Sztywna struktura, która zapobiega echa i halucynacjom
+        system_rules = """[SYSTEM CORE INSTRUCTIONS]
+You are ADA (AI-Powered Doomsday Chat). You are a practical, direct, and offline survival assistant.
+You must obey these rules at all times:
+1. ALWAYS respond in the EXACT language the User speaks in their current message.
+2. NEVER echo, copy, or just translate the User's prompt. You must generate a meaningful, unique response.
+3. NEVER assume the User's identity, name, or persona. You are always ADA.
+4. If you use the [DATA CONTEXT] to answer, synthesize the information naturally. If the context is empty or irrelevant to the question, state that your local knowledge base lacks this specific data, but try to help using your general knowledge."""
 
         if self.use_rag_var.get():
-            docs = self.db.similarity_search(query, k=2)
+            docs = self.db.similarity_search(query, k=5)
             context = "\n---\n".join([d.page_content for d in docs])
+
+            # === RENTGEN BAZY DANYCH ===
+            # print(f"\n[🔍 DEBUG RAG] Szukam dla: '{query}'")
+            # print(f"[🔍 DEBUG RAG] Wstrzyknięty kontekst:\n{context}")
+            # print("-" * 50)
 
             prompt = f"""{system_rules}
 
-User's Data Context:
+[DATA CONTEXT]
 {context}
 
+[CHAT HISTORY]
 {history_str}
-CURRENT MESSAGE: {query}
-Ada (replying strictly in the language of the CURRENT MESSAGE):"""
+
+User: {query}
+ADA:"""
 
         else:
             prompt = f"""{system_rules}
 
+[CHAT HISTORY]
 {history_str}
-CURRENT MESSAGE: {query}
-Ada (replying strictly in the language of the CURRENT MESSAGE):"""
+
+User: {query}
+ADA:"""
 
         try:
             response = self.llm.invoke(prompt).strip()
 
-            # 3. Zmiana wyświetlania na "🤖 ADA [model]"
             self.append_chat(f"🤖 ADA [{self.current_model}]: {response}")
 
-            self.chat_history.append(f"CURRENT MESSAGE: {query}")
-            self.chat_history.append(f"Ada: {response}")
+            self.chat_history.append(f"User: {query}")
+            self.chat_history.append(f"ADA: {response}")
 
             if len(self.chat_history) > 6:
                 self.chat_history = self.chat_history[-6:]
 
         except Exception as e:
             self.append_chat(f"❌ ADA [SYSTEM ERROR]: {str(e)}")
-
 
 if __name__ == "__main__":
     app = DoomsdayChatApp()
