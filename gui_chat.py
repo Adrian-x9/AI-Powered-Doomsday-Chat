@@ -50,9 +50,9 @@ class DoomsdayChatApp(ctk.CTk):
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.settings_frame.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="ew")
 
-        # 1. Suwak fontu z imieniem ADA
+        # 1. Suwak fontu z imieniem ADA (Stała wielkość czcionki 14)
         self.font_label = ctk.CTkLabel(self.settings_frame, text=f"ADA | Aa: {self.current_font_size}",
-                                       font=(self.font_family, self.current_font_size, "bold"))
+                                       font=(self.font_family, 14, "bold"))
         self.font_label.pack(side="left", padx=(0, 5))
 
         self.font_slider = ctk.CTkSlider(self.settings_frame, from_=10, to=32, number_of_steps=22,
@@ -60,27 +60,27 @@ class DoomsdayChatApp(ctk.CTk):
         self.font_slider.set(self.current_font_size)
         self.font_slider.pack(side="left", padx=5)
 
-        # 2. Wybór modelu
+        # 2. Wybór modelu (Stała wielkość czcionki ikonki 18, tekstu 14)
         self.model_label = ctk.CTkLabel(self.settings_frame, text="🧠",
-                                        font=(self.font_family, self.current_font_size + 4))
+                                        font=(self.font_family, 18))
         self.model_label.pack(side="left", padx=(15, 5))
 
         self.model_option = ctk.CTkOptionMenu(self.settings_frame, values=["llama3", "mistral", "phi3"],
                                               command=self.change_model, width=100,
-                                              font=(self.font_family, self.current_font_size))
+                                              font=(self.font_family, 14))
         self.model_option.set(self.current_model)
         self.model_option.pack(side="left", padx=5)
 
-        # 3. Przycisk Zapisz Log
+        # 3. Przycisk Zapisz Log (Stała wielkość 16)
         self.save_button = ctk.CTkButton(self.settings_frame, text="💾", command=self.save_chat, width=40,
-                                         font=(self.font_family, self.current_font_size + 2))
+                                         font=(self.font_family, 16))
         self.save_button.pack(side="right", padx=(10, 0))
 
-        # 4. CHECKBOX: Baza wiedzy (zmniejszony border_spacing dla mniejszego odstępu)
+        # 4. CHECKBOX: Baza wiedzy (Stała wielkość 14)
         self.use_rag_var = ctk.BooleanVar(value=True)
         self.rag_checkbox = ctk.CTkCheckBox(self.settings_frame, text="🗂️ RAG",
                                             variable=self.use_rag_var,
-                                            font=(self.font_family, self.current_font_size, "bold"))
+                                            font=(self.font_family, 14, "bold"))
         self.rag_checkbox.pack(side="right", padx=10)
 
         # --- OKNO CZATU ---
@@ -107,15 +107,12 @@ class DoomsdayChatApp(ctk.CTk):
 
     def update_font_size(self, value):
         self.current_font_size = int(value)
-        self.font_label.configure(text=f"ADA | Aa: {self.current_font_size}",
-                                  font=(self.font_family, self.current_font_size, "bold"))
-        self.model_label.configure(font=(self.font_family, self.current_font_size + 4))
-        self.model_option.configure(font=(self.font_family, self.current_font_size))
-        self.save_button.configure(font=(self.font_family, self.current_font_size + 2))
-        self.rag_checkbox.configure(font=(self.font_family, self.current_font_size, "bold"))
+        # Zmieniamy tylko tekst etykiety, ale nie jej fizyczny rozmiar
+        self.font_label.configure(text=f"ADA | Aa: {self.current_font_size}")
+
+        # Skalujemy TYLKO obszary robocze
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
         self.user_input.configure(font=(self.font_family, self.current_font_size))
-        self.send_button.configure(font=(self.font_family, self.current_font_size + 4))
 
     def change_model(self, new_model):
         self.append_chat(f"⚙️ ADA [SYSTEM]: Loading model -> {new_model}...")
