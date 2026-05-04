@@ -3,14 +3,13 @@ import os
 import warnings
 from datetime import datetime
 from tkinter import filedialog
-from langchain_community.llms import Ollama
+# ZMIANA 1: Przechodzimy na ChatOllama zamiast surowego LLM
+from langchain_community.chat_models import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 warnings.filterwarnings("ignore")
-
-# 1. TWARDE WYMUSZENIE TRYBU OFFLINE DLA HUGGING FACE
-os.environ["HF_HUB_OFFLINE"] = "1"
 
 # Konfiguracja ścieżek
 CHROMA_DB_DIR = "../n8n Workflow Architect/chroma_db"
@@ -30,17 +29,34 @@ class DoomsdayChatApp(ctk.CTk):
         self.current_font_size = 14
         self.current_model = "llama3"
 
-        # Pamięć krótkotrwała Ady (Historia czatu)
+        # Pamięć krótkotrwała Ady (Historia czatu - przechowujemy jako krotki (pytanie, odpowiedź))
         self.chat_history = []
 
-        # Inicjalizacja silnika AI
         print("🔋 System init...")
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="paraphrase-multilingual-MiniLM-L12-v2",
-            model_kwargs={'local_files_only': True}  # Zabezpieczenie przed pingowaniem serwera
-        )
+
+        # ZMIANA 2: Inteligentne sprawdzanie trybu offline
+        try:
+            # Wymuszamy tryb offline
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="paraphrase-multilingual-MiniLM-L12-v2",
+                model_kwargs={'local_files_only': True}
+            )
+            print("🌐 Model embeddingowy: Znaleziono w pamięci podręcznej (tryb offline aktywny).")
+        except Exception as e:
+            # Jeśli się nie uda (pierwsze uruchomienie), zdejmujemy blokadę
+            print("⚠️ Brak modelu embeddingowego. Przełączam w tryb ONLINE, by go pobrać...")
+            os.environ.pop("HF_HUB_OFFLINE", None)
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name="paraphrase-multilingual-MiniLM-L12-v2",
+                model_kwargs={'local_files_only': False}
+            )
+            print("✅ Model pobrany. Kolejne uruchomienia będą już offline.")
+
         self.db = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=self.embeddings)
-        self.llm = Ollama(model=self.current_model)
+
+        # ZMIANA 3: Używamy ChatOllama zamiast Ollama
+        self.llm = ChatOllama(model=self.current_model)
 
         # Layout - Konfiguracja siatki
         self.grid_columnconfigure(0, weight=1)
@@ -103,21 +119,19 @@ class DoomsdayChatApp(ctk.CTk):
                                          font=(self.font_family, self.current_font_size + 4))
         self.send_button.pack(side="right", padx=10, pady=10)
 
-        self.append_chat("🤖 ADA [SYSTEM]: OFFLINE MODE ACTIVE. READY.")
+        self.append_chat("🤖 ADA [SYSTEM]: READY.")
 
     def update_font_size(self, value):
         self.current_font_size = int(value)
-        # Zmieniamy tylko tekst etykiety, ale nie jej fizyczny rozmiar
         self.font_label.configure(text=f"ADA | Aa: {self.current_font_size}")
-
-        # Skalujemy TYLKO obszary robocze
         self.chat_display.configure(font=(self.font_family, self.current_font_size))
         self.user_input.configure(font=(self.font_family, self.current_font_size))
 
     def change_model(self, new_model):
         self.append_chat(f"⚙️ ADA [SYSTEM]: Loading model -> {new_model}...")
         self.current_model = new_model
-        self.llm = Ollama(model=self.current_model)
+        # Przeładowanie modelu ChatOllama
+        self.llm = ChatOllama(model=self.current_model)
 
         self.chat_history = []
         self.append_chat(f"⚙️ ADA [SYSTEM]: Model {new_model} ready. Memory cleared.")
@@ -152,62 +166,53 @@ class DoomsdayChatApp(ctk.CTk):
         self.append_chat(f"👤 TY: {query}")
         self.user_input.delete(0, "end")
 
-        # 1. Budowanie czytelnego tekstu historii
-        history_str = ""
-        if self.chat_history:
-            history_str = "\n".join(self.chat_history)
-
-# 2. Uniwersalny System Prompt - Sztywna struktura, która zapobiega echa i halucynacjom
+        # Uniwersalny System Prompt
         system_rules = """[SYSTEM CORE INSTRUCTIONS]
 You are ADA (AI-Powered Doomsday Chat). You are a practical, direct, and offline survival assistant.
 You must obey these rules at all times:
 1. ALWAYS respond in the EXACT language the User speaks in their current message.
 2. NEVER echo, copy, or just translate the User's prompt. You must generate a meaningful, unique response.
-3. NEVER assume the User's identity, name, or persona. You are always ADA.
-4. If you use the [DATA CONTEXT] to answer, synthesize the information naturally. If the context is empty or irrelevant to the question, state that your local knowledge base lacks this specific data, but try to help using your general knowledge."""
+3. NEVER assume the User's identity, name, or persona. You are always ADA."""
+
+        # ZMIANA 4: Budujemy listę obiektów Message zamiast jednego stringa
+        messages = []
 
         if self.use_rag_var.get():
             docs = self.db.similarity_search(query, k=5)
             context = "\n---\n".join([d.page_content for d in docs])
 
-            # === RENTGEN BAZY DANYCH ===
-            # print(f"\n[🔍 DEBUG RAG] Szukam dla: '{query}'")
-            # print(f"[🔍 DEBUG RAG] Wstrzyknięty kontekst:\n{context}")
-            # print("-" * 50)
-
-            prompt = f"""{system_rules}
-
-[DATA CONTEXT]
-{context}
-
-[CHAT HISTORY]
-{history_str}
-
-User: {query}
-ADA:"""
-
+            system_msg_content = f"{system_rules}\n\n[DATA CONTEXT]\n{context}\n\nIf you use the [DATA CONTEXT] to answer, synthesize the information naturally. If the context is empty or irrelevant to the question, state that your local knowledge base lacks this specific data, but try to help using your general knowledge."
         else:
-            prompt = f"""{system_rules}
+            system_msg_content = system_rules
 
-[CHAT HISTORY]
-{history_str}
+        # 1. Dodajemy instrukcję systemową na samą górę
+        messages.append(SystemMessage(content=system_msg_content))
 
-User: {query}
-ADA:"""
+        # 2. Wstrzykujemy historię konwersacji (Pamięć krótkotrwała)
+        for past_user_query, past_ada_response in self.chat_history:
+            messages.append(HumanMessage(content=past_user_query))
+            messages.append(AIMessage(content=past_ada_response))
+
+        # 3. Dodajemy aktualne pytanie użytkownika na sam dół
+        messages.append(HumanMessage(content=query))
 
         try:
-            response = self.llm.invoke(prompt).strip()
+            # ZMIANA 5: Wywołujemy ChatOllama podając listę obiektów wiadomości
+            response_obj = self.llm.invoke(messages)
+            response = response_obj.content.strip()
 
             self.append_chat(f"🤖 ADA [{self.current_model}]: {response}")
 
-            self.chat_history.append(f"User: {query}")
-            self.chat_history.append(f"ADA: {response}")
+            # Zapisujemy do historii jako krotkę
+            self.chat_history.append((query, response))
 
-            if len(self.chat_history) > 6:
-                self.chat_history = self.chat_history[-6:]
+            # Utrzymujemy maksymalnie 3 pełne interakcje wstecz (odpowiednik 6 wiadomości)
+            if len(self.chat_history) > 3:
+                self.chat_history = self.chat_history[-3:]
 
         except Exception as e:
             self.append_chat(f"❌ ADA [SYSTEM ERROR]: {str(e)}")
+
 
 if __name__ == "__main__":
     app = DoomsdayChatApp()
