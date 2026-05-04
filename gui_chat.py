@@ -1,9 +1,9 @@
 import customtkinter as ctk
 import os
 import warnings
+import psutil
 from datetime import datetime
 from tkinter import filedialog
-# ZMIANA 1: Przechodzimy na ChatOllama zamiast surowego LLM
 from langchain_community.chat_models import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -11,7 +11,7 @@ from langchain_community.vectorstores import Chroma
 
 warnings.filterwarnings("ignore")
 
-# Konfiguracja ścieżek
+# Path configuration
 CHROMA_DB_DIR = "../n8n Workflow Architect/chroma_db"
 
 
@@ -19,54 +19,60 @@ class DoomsdayChatApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Ustawienia okna
+        # Window setup
         self.title("ADA - AI-Powered Doomsday Chat")
         self.geometry("900x700")
         ctk.set_appearance_mode("dark")
 
-        # Stan początkowy
+        # Initial state
         self.font_family = "Segoe UI"
         self.current_font_size = 14
-        self.current_model = "llama3"
 
-        # Pamięć krótkotrwała Ady (Historia czatu - przechowujemy jako krotki (pytanie, odpowiedź))
+        # Chat history storage (pairs of user query and AI response)
         self.chat_history = []
 
         print("🔋 System init...")
 
-        # ZMIANA 2: Inteligentne sprawdzanie trybu offline
+        # Hardware-based default model selection
+        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+        if ram_gb >= 14.0:
+            self.current_model = "qwen2.5"
+            ram_msg = f"🖥️ Detected {ram_gb:.1f} GB RAM. Defaulting to Qwen 2.5 (High Performance)."
+        else:
+            self.current_model = "llama3"
+            ram_msg = f"🖥️ Detected {ram_gb:.1f} GB RAM. Defaulting to Llama 3 (Balanced)."
+
+        # AI Engine Initialization
         try:
-            # Wymuszamy tryb offline
+            # Force offline mode
             os.environ["HF_HUB_OFFLINE"] = "1"
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="paraphrase-multilingual-MiniLM-L12-v2",
                 model_kwargs={'local_files_only': True}
             )
-            print("🌐 Model embeddingowy: Znaleziono w pamięci podręcznej (tryb offline aktywny).")
+            print("🌐 Embedding model: Found in cache (offline mode).")
         except Exception as e:
-            # Jeśli się nie uda (pierwsze uruchomienie), zdejmujemy blokadę
-            print("⚠️ Brak modelu embeddingowego. Przełączam w tryb ONLINE, by go pobrać...")
+            # Fallback for initial download
+            print("⚠️ Embedding model not found. Switching to ONLINE mode for initial download...")
             os.environ.pop("HF_HUB_OFFLINE", None)
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="paraphrase-multilingual-MiniLM-L12-v2",
                 model_kwargs={'local_files_only': False}
             )
-            print("✅ Model pobrany. Kolejne uruchomienia będą już offline.")
+            print("✅ Model downloaded. Future initializations will be offline.")
 
         self.db = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=self.embeddings)
-
-        # ZMIANA 3: Używamy ChatOllama zamiast Ollama
         self.llm = ChatOllama(model=self.current_model)
 
-        # Layout - Konfiguracja siatki
+        # Layout - Grid configuration
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # --- PANEL USTAWIEŃ (Góra) ---
+        # --- SETTINGS PANEL (Top) ---
         self.settings_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.settings_frame.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="ew")
 
-        # 1. Suwak fontu z imieniem ADA (Stała wielkość czcionki 14)
+        # 1. Font size slider
         self.font_label = ctk.CTkLabel(self.settings_frame, text=f"ADA | Aa: {self.current_font_size}",
                                        font=(self.font_family, 14, "bold"))
         self.font_label.pack(side="left", padx=(0, 5))
@@ -76,50 +82,52 @@ class DoomsdayChatApp(ctk.CTk):
         self.font_slider.set(self.current_font_size)
         self.font_slider.pack(side="left", padx=5)
 
-        # 2. Wybór modelu (Stała wielkość czcionki ikonki 18, tekstu 14)
-        self.model_label = ctk.CTkLabel(self.settings_frame, text="🧠",
-                                        font=(self.font_family, 18))
+        # 2. Model selection
+        self.model_label = ctk.CTkLabel(self.settings_frame, text="🧠", font=(self.font_family, 18))
         self.model_label.pack(side="left", padx=(15, 5))
 
-        self.model_option = ctk.CTkOptionMenu(self.settings_frame, values=["llama3", "mistral", "phi3"],
+        self.model_option = ctk.CTkOptionMenu(self.settings_frame,
+                                              values=["qwen2.5", "llama3", "mistral", "phi3"],
                                               command=self.change_model, width=100,
                                               font=(self.font_family, 14))
         self.model_option.set(self.current_model)
         self.model_option.pack(side="left", padx=5)
 
-        # 3. Przycisk Zapisz Log (Stała wielkość 16)
+        # 3. Save Log button
         self.save_button = ctk.CTkButton(self.settings_frame, text="💾", command=self.save_chat, width=40,
                                          font=(self.font_family, 16))
         self.save_button.pack(side="right", padx=(10, 0))
 
-        # 4. CHECKBOX: Baza wiedzy (Stała wielkość 14)
+        # 4. RAG Checkbox
         self.use_rag_var = ctk.BooleanVar(value=True)
         self.rag_checkbox = ctk.CTkCheckBox(self.settings_frame, text="🗂️ RAG",
                                             variable=self.use_rag_var,
                                             font=(self.font_family, 14, "bold"))
         self.rag_checkbox.pack(side="right", padx=10)
 
-        # --- OKNO CZATU ---
+        # --- CHAT WINDOW ---
         self.chat_display = ctk.CTkTextbox(self, state="disabled", wrap="word",
                                            font=(self.font_family, self.current_font_size))
         self.chat_display.grid(row=1, column=0, padx=20, pady=20, sticky="nsew")
 
-        # --- PANEL WEJŚCIA (Dół) ---
+        # --- INPUT PANEL (Bottom) ---
         self.input_frame = ctk.CTkFrame(self)
         self.input_frame.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
 
-        # Placeholder
+        # Input field
         self.user_input = ctk.CTkEntry(self.input_frame, placeholder_text="...",
                                        height=40, font=(self.font_family, self.current_font_size))
         self.user_input.pack(side="left", fill="x", expand=True, padx=(10, 10), pady=10)
         self.user_input.bind("<Return>", lambda e: self.send_message())
 
-        # Przycisk wysyłania
+        # Send button
         self.send_button = ctk.CTkButton(self.input_frame, text="➤", command=self.send_message, width=60,
                                          font=(self.font_family, self.current_font_size + 4))
         self.send_button.pack(side="right", padx=10, pady=10)
 
+        # Initial system messages
         self.append_chat("🤖 ADA [SYSTEM]: READY.")
+        self.append_chat(ram_msg)
 
     def update_font_size(self, value):
         self.current_font_size = int(value)
@@ -130,9 +138,7 @@ class DoomsdayChatApp(ctk.CTk):
     def change_model(self, new_model):
         self.append_chat(f"⚙️ ADA [SYSTEM]: Loading model -> {new_model}...")
         self.current_model = new_model
-        # Przeładowanie modelu ChatOllama
         self.llm = ChatOllama(model=self.current_model)
-
         self.chat_history = []
         self.append_chat(f"⚙️ ADA [SYSTEM]: Model {new_model} ready. Memory cleared.")
 
@@ -163,10 +169,9 @@ class DoomsdayChatApp(ctk.CTk):
         query = self.user_input.get()
         if not query: return
 
-        self.append_chat(f"👤 TY: {query}")
+        self.append_chat(f"👤 YOU: {query}")
         self.user_input.delete(0, "end")
 
-        # Uniwersalny System Prompt
         system_rules = """[SYSTEM CORE INSTRUCTIONS]
 You are ADA (AI-Powered Doomsday Chat). You are a practical, direct, and offline survival assistant.
 You must obey these rules at all times:
@@ -174,7 +179,6 @@ You must obey these rules at all times:
 2. NEVER echo, copy, or just translate the User's prompt. You must generate a meaningful, unique response.
 3. NEVER assume the User's identity, name, or persona. You are always ADA."""
 
-        # ZMIANA 4: Budujemy listę obiektów Message zamiast jednego stringa
         messages = []
 
         if self.use_rag_var.get():
@@ -185,28 +189,23 @@ You must obey these rules at all times:
         else:
             system_msg_content = system_rules
 
-        # 1. Dodajemy instrukcję systemową na samą górę
         messages.append(SystemMessage(content=system_msg_content))
 
-        # 2. Wstrzykujemy historię konwersacji (Pamięć krótkotrwała)
         for past_user_query, past_ada_response in self.chat_history:
             messages.append(HumanMessage(content=past_user_query))
             messages.append(AIMessage(content=past_ada_response))
 
-        # 3. Dodajemy aktualne pytanie użytkownika na sam dół
         messages.append(HumanMessage(content=query))
 
         try:
-            # ZMIANA 5: Wywołujemy ChatOllama podając listę obiektów wiadomości
             response_obj = self.llm.invoke(messages)
             response = response_obj.content.strip()
 
             self.append_chat(f"🤖 ADA [{self.current_model}]: {response}")
 
-            # Zapisujemy do historii jako krotkę
             self.chat_history.append((query, response))
 
-            # Utrzymujemy maksymalnie 3 pełne interakcje wstecz (odpowiednik 6 wiadomości)
+            # Maintain a rolling window of the last 3 interactions
             if len(self.chat_history) > 3:
                 self.chat_history = self.chat_history[-3:]
 
